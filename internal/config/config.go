@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 type Token struct {
@@ -76,11 +75,11 @@ func Save(cfg *Config) error {
 	defer lockFile.Close()
 	defer os.Remove(lockPath)
 
-	// Exclusive lock
-	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+	// Exclusive lock (platform-specific implementation)
+	if err := lockExclusive(lockFile); err != nil {
 		return fmt.Errorf("acquiring lock: %w", err)
 	}
-	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN) //nolint:errcheck
+	defer unlockFile(lockFile)
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
