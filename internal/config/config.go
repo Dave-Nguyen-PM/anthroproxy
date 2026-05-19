@@ -30,13 +30,13 @@ func DefaultConfig() *Config {
 
 func ConfigDir() string {
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "anthropool-proxy")
+		return filepath.Join(xdg, "anthroproxy")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", ".config", "anthropool-proxy")
+		return filepath.Join(".", ".config", "anthroproxy")
 	}
-	return filepath.Join(home, ".config", "anthropool-proxy")
+	return filepath.Join(home, ".config", "anthroproxy")
 }
 
 func ConfigPath() string {

@@ -1,4 +1,4 @@
-# anthropool-proxy
+# anthroproxy
 
 A Go reverse proxy that pools your team's Claude Pro/Max OAuth tokens. Heavy users draw from the whole pool instead of blocking on their own seat — rate limits are handled transparently with automatic token rotation.
 
@@ -6,7 +6,7 @@ A Go reverse proxy that pools your team's Claude Pro/Max OAuth tokens. Heavy use
 team member (Claude Code CLI / VS Code)
         │  ANTHROPIC_BASE_URL=http://proxy:8080
         ▼
-  anthropool-proxy
+  anthroproxy
         │  picks next available token (round-robin)
         │  on 429 → cooldown + retry with next token
         ▼
@@ -43,18 +43,18 @@ team member (Claude Code CLI / VS Code)
 Requires Go 1.21 or newer.
 
 ```bash
-git clone <repo-url> anthropool-proxy
-cd anthropool-proxy
-go build -o anthropool-proxy ./cmd/anthropool-proxy
+git clone <repo-url> anthroproxy
+cd anthroproxy
+go build -o anthroproxy ./cmd/anthroproxy
 
 # Move the binary somewhere on your PATH
-sudo mv anthropool-proxy /usr/local/bin/
+sudo mv anthroproxy /usr/local/bin/
 ```
 
 Verify:
 
 ```bash
-anthropool-proxy --help
+anthroproxy --help
 ```
 
 ---
@@ -95,17 +95,17 @@ The token looks like `sk-ant-oaut...` and is typically several hundred character
 **Add each token to the pool:**
 
 ```bash
-anthropool-proxy add alice
+anthroproxy add alice
 # Paste alice's token at the prompt and press Enter
 
-anthropool-proxy add bob
-anthropool-proxy add carol
+anthroproxy add bob
+anthroproxy add carol
 ```
 
 **Confirm the pool looks right:**
 
 ```bash
-anthropool-proxy list
+anthroproxy list
 ```
 
 ```
@@ -119,7 +119,7 @@ deadbeefcafebabe         bob      ****cd34     ready
 **Start the proxy:**
 
 ```bash
-anthropool-proxy serve
+anthroproxy serve
 ```
 
 The proxy listens on `0.0.0.0:8080` by default. It logs every request to stdout:
@@ -130,7 +130,7 @@ The proxy listens on `0.0.0.0:8080` by default. It logs every request to stdout:
 [2026-05-20T09:00:05Z] token="bob"   POST /v1/messages -> 200 (0.99s)
 ```
 
-**Change the listen address or cooldown duration** by editing `~/.config/anthropool-proxy/config.json`:
+**Change the listen address or cooldown duration** by editing `~/.config/anthroproxy/config.json`:
 
 ```json
 {
@@ -147,7 +147,7 @@ Then restart the proxy.
 
 **macOS — launchd**
 
-Create `~/Library/LaunchAgents/com.anthropool.proxy.plist`:
+Create `~/Library/LaunchAgents/com.anthroproxy.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -156,10 +156,10 @@ Create `~/Library/LaunchAgents/com.anthropool.proxy.plist`:
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.anthropool.proxy</string>
+  <string>com.anthroproxy</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/local/bin/anthropool-proxy</string>
+    <string>/usr/local/bin/anthroproxy</string>
     <string>serve</string>
   </array>
   <key>RunAtLoad</key>
@@ -167,29 +167,29 @@ Create `~/Library/LaunchAgents/com.anthropool.proxy.plist`:
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>/tmp/anthropool-proxy.log</string>
+  <string>/tmp/anthroproxy.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/anthropool-proxy.log</string>
+  <string>/tmp/anthroproxy.log</string>
 </dict>
 </plist>
 ```
 
 ```bash
-launchctl load ~/Library/LaunchAgents/com.anthropool.proxy.plist
-launchctl start com.anthropool.proxy
+launchctl load ~/Library/LaunchAgents/com.anthroproxy.plist
+launchctl start com.anthroproxy
 ```
 
 **Linux — systemd**
 
-Create `/etc/systemd/system/anthropool-proxy.service`:
+Create `/etc/systemd/system/anthroproxy.service`:
 
 ```ini
 [Unit]
-Description=anthropool-proxy
+Description=anthroproxy
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/anthropool-proxy serve
+ExecStart=/usr/local/bin/anthroproxy serve
 Restart=always
 User=YOUR_USER
 
@@ -199,8 +199,8 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now anthropool-proxy
-sudo journalctl -fu anthropool-proxy   # follow logs
+sudo systemctl enable --now anthroproxy
+sudo journalctl -fu anthroproxy   # follow logs
 ```
 
 ---
@@ -210,16 +210,16 @@ sudo journalctl -fu anthropool-proxy   # follow logs
 **Remove a token** (e.g. when someone leaves the team):
 
 ```bash
-anthropool-proxy remove alice
+anthroproxy remove alice
 # or by ID:
-anthropool-proxy remove a1b2c3d4e5f6a7b8
+anthroproxy remove a1b2c3d4e5f6a7b8
 ```
 
 **Update a token** (when a token expires — you will see `401` in the logs for that label):
 
 ```bash
-anthropool-proxy remove alice
-anthropool-proxy add alice   # paste the fresh token
+anthroproxy remove alice
+anthroproxy add alice   # paste the fresh token
 ```
 
 Then restart the proxy (or send `SIGHUP` if you add graceful-reload support later).
@@ -342,15 +342,15 @@ Remove or comment out the `ANTHROPIC_BASE_URL` line from `~/.claude/settings.jso
 
 | Command | Description |
 |---|---|
-| `anthropool-proxy serve` | Start the proxy server |
-| `anthropool-proxy add <label>` | Add a token to the pool (prompts for the token value) |
-| `anthropool-proxy list` | List all tokens and their current status |
-| `anthropool-proxy remove <label\|id>` | Remove a token from the pool |
-| `anthropool-proxy status` | Show pool summary (token count, listen address, cooldown setting) |
+| `anthroproxy serve` | Start the proxy server |
+| `anthroproxy add <label>` | Add a token to the pool (prompts for the token value) |
+| `anthroproxy list` | List all tokens and their current status |
+| `anthroproxy remove <label\|id>` | Remove a token from the pool |
+| `anthroproxy status` | Show pool summary (token count, listen address, cooldown setting) |
 
 ### Config file
 
-Location: `~/.config/anthropool-proxy/config.json` (respects `$XDG_CONFIG_HOME`).
+Location: `~/.config/anthroproxy/config.json` (respects `$XDG_CONFIG_HOME`).
 
 | Field | Default | Description |
 |---|---|---|

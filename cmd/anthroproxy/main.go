@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dtnguyen/anthropool-proxy/internal/config"
-	"github.com/dtnguyen/anthropool-proxy/internal/pool"
-	"github.com/dtnguyen/anthropool-proxy/internal/proxy"
+	"github.com/Dave-Nguyen-PM/anthroproxy/internal/config"
+	"github.com/Dave-Nguyen-PM/anthroproxy/internal/pool"
+	"github.com/Dave-Nguyen-PM/anthroproxy/internal/proxy"
 )
 
 func main() {
@@ -30,7 +30,7 @@ func main() {
 		cmdServe()
 	case "add":
 		if len(os.Args) < 3 {
-			fmt.Fprintln(os.Stderr, "usage: anthropool-proxy add <label>")
+			fmt.Fprintln(os.Stderr, "usage: anthroproxy add <label>")
 			os.Exit(1)
 		}
 		cmdAdd(os.Args[2])
@@ -38,7 +38,7 @@ func main() {
 		cmdList()
 	case "remove":
 		if len(os.Args) < 3 {
-			fmt.Fprintln(os.Stderr, "usage: anthropool-proxy remove <id|label>")
+			fmt.Fprintln(os.Stderr, "usage: anthroproxy remove <id|label>")
 			os.Exit(1)
 		}
 		cmdRemove(os.Args[2])
@@ -52,7 +52,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, `anthropool-proxy — Claude token pool proxy
+	fmt.Fprintln(os.Stderr, `anthroproxy — Claude token pool proxy
 
 Commands:
   serve            Start the proxy server
@@ -68,7 +68,7 @@ func cmdServe() {
 		log.Fatalf("loading config: %v", err)
 	}
 	if len(cfg.Tokens) == 0 {
-		log.Fatal("no tokens configured — run: anthropool-proxy add <label>")
+		log.Fatal("no tokens configured — run: anthroproxy add <label>")
 	}
 
 	p := pool.New(cfg.Tokens, cfg.CooldownMinutes)
@@ -86,7 +86,7 @@ func cmdServe() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	log.Printf("anthropool-proxy listening on %s with %d token(s), cooldown=%dm",
+	log.Printf("anthroproxy listening on %s with %d token(s), cooldown=%dm",
 		cfg.Listen, len(cfg.Tokens), cfg.CooldownMinutes)
 
 	quit := make(chan os.Signal, 1)

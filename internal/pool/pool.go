@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dtnguyen/anthropool-proxy/internal/config"
+	"github.com/Dave-Nguyen-PM/anthroproxy/internal/config"
 )
 
 type TokenState struct {

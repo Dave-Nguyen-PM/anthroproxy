@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/dtnguyen/anthropool-proxy/internal/pool"
+	"github.com/Dave-Nguyen-PM/anthroproxy/internal/pool"
 )
 
 const target = "https://api.anthropic.com"
