@@ -1,189 +1,158 @@
 # anthropool-proxy
 
-A Go reverse proxy that pools multiple Claude OAuth (Bearer) tokens across a team, distributing requests round-robin and automatically rotating to the next token on a 429 rate-limit response.
+A Go reverse proxy that pools your team's Claude Pro/Max OAuth tokens. Heavy users draw from the whole pool instead of blocking on their own seat — rate limits are handled transparently with automatic token rotation.
 
-## How it works
+```
+team member (Claude Code CLI / VS Code)
+        │  ANTHROPIC_BASE_URL=http://proxy:8080
+        ▼
+  anthropool-proxy
+        │  picks next available token (round-robin)
+        │  on 429 → cooldown + retry with next token
+        ▼
+  api.anthropic.com
+```
 
-1. Team members point their Claude Code CLI at the proxy instead of `api.anthropic.com`.
-2. The proxy picks the next available token from the pool (round-robin, skipping tokens in cooldown).
-3. If the upstream returns `429 Too Many Requests`, the proxy marks that token in cooldown for a configurable duration (default 30 minutes) and transparently retries the request with the next available token.
-4. All other headers are forwarded unchanged; only `Authorization` is replaced.
+---
 
-## Prerequisites
+## Contents
 
-- Go 1.21+ (to build from source)
-- One or more Claude Pro/Max Bearer tokens
+- [Admin guide](#admin-guide)
+  - [Build and install](#build-and-install)
+  - [Collect tokens from team members](#collect-tokens-from-team-members)
+  - [Configure and start the proxy](#configure-and-start-the-proxy)
+  - [Keep the proxy running](#keep-the-proxy-running)
+  - [Maintain the token pool](#maintain-the-token-pool)
+- [Team member guide](#team-member-guide)
+  - [Find your bearer token](#find-your-bearer-token)
+  - [Configure Claude Code CLI](#configure-claude-code-cli)
+  - [Configure Claude Code in VS Code](#configure-claude-code-in-vs-code)
+  - [Verify it is working](#verify-it-is-working)
+  - [Revert to direct access](#revert-to-direct-access)
+- [Reference](#reference)
+  - [CLI commands](#cli-commands)
+  - [Config file](#config-file)
+  - [Log format](#log-format)
 
-## Build
+---
+
+## Admin guide
+
+### Build and install
+
+Requires Go 1.21 or newer.
 
 ```bash
-git clone <repo>
+git clone <repo-url> anthropool-proxy
 cd anthropool-proxy
 go build -o anthropool-proxy ./cmd/anthropool-proxy
+
+# Move the binary somewhere on your PATH
+sudo mv anthropool-proxy /usr/local/bin/
 ```
 
-Or install directly:
+Verify:
 
 ```bash
-go install github.com/dtnguyen/anthropool-proxy/cmd/anthropool-proxy@latest
+anthropool-proxy --help
 ```
 
-## Configuration
+---
 
-Config is stored at `~/.config/anthropool-proxy/config.json` (respects `$XDG_CONFIG_HOME`).
+### Collect tokens from team members
 
-```json
-{
-  "tokens": [
-    {
-      "id": "a1b2c3d4e5f6a7b8",
-      "label": "alice",
-      "bearer_token": "sk-ant-..."
-    },
-    {
-      "id": "deadbeefcafebabe",
-      "label": "bob",
-      "bearer_token": "sk-ant-..."
-    }
-  ],
-  "listen": "0.0.0.0:8080",
-  "cooldown_minutes": 30
-}
+Each team member must extract their **Bearer token** from the machine where they have Claude Code installed and send it to you securely (password manager share, 1Password, etc. — not Slack or email).
+
+Tell each team member to run **one** of the following on their own machine:
+
+**macOS (reads from Keychain — most reliable):**
+```bash
+security find-generic-password -a "claude.ai" -s "claude.ai" -w 2>/dev/null \
+  || security find-internet-password -s "claude.ai" -w 2>/dev/null \
+  || security find-generic-password -s "Claude" -w
 ```
 
-You can edit this file directly or use the CLI commands.
+**macOS / Linux (reads credentials file):**
+```bash
+cat ~/.claude/.credentials.json \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['claudeAiOauth']['accessToken'])"
+```
 
-## Commands
+**Any platform — grab from a live network request:**
+1. Open [claude.ai](https://claude.ai) in Chrome.
+2. Open DevTools → **Network** tab.
+3. Send any message.
+4. Click any `/api/` request → **Headers** → copy the value after `Authorization: Bearer `.
 
-### Add a token
+The token looks like `sk-ant-oaut...` and is typically several hundred characters long.
+
+> **Important:** Tokens expire (usually within 24 hours or on next login). Each team member should re-extract and re-send their token whenever you see `401` errors in the proxy logs for their label.
+
+---
+
+### Configure and start the proxy
+
+**Add each token to the pool:**
 
 ```bash
 anthropool-proxy add alice
-# Prompts: Enter bearer token for "alice":
+# Paste alice's token at the prompt and press Enter
+
+anthropool-proxy add bob
+anthropool-proxy add carol
 ```
 
-The token is stored in config. Only the last 4 characters are shown in any output.
-
-### List tokens
+**Confirm the pool looks right:**
 
 ```bash
 anthropool-proxy list
 ```
 
 ```
-ID                       LABEL                TOKEN        STATUS
-----------------------------------------------------------------------
-a1b2c3d4e5f6a7b8         alice                ****ab12     ready
-deadbeefcafebabe         bob                  ****cd34     ready
+ID                       LABEL    TOKEN        STATUS
+-------------------------------------------------------
+a1b2c3d4e5f6a7b8         alice    ****ab12     ready
+deadbeefcafebabe         bob      ****cd34     ready
+1234567890abcdef         carol    ****ef56     ready
 ```
 
-### Remove a token
-
-```bash
-anthropool-proxy remove alice
-# or by ID:
-anthropool-proxy remove a1b2c3d4e5f6a7b8
-```
-
-### Start the proxy
+**Start the proxy:**
 
 ```bash
 anthropool-proxy serve
 ```
 
-### Show status
+The proxy listens on `0.0.0.0:8080` by default. It logs every request to stdout:
 
-```bash
-anthropool-proxy status
+```
+[2026-05-20T09:00:01Z] token="alice" POST /v1/messages -> 200 (1.23s)
+[2026-05-20T09:00:05Z] token="alice" rate-limited, entering 30m cooldown
+[2026-05-20T09:00:05Z] token="bob"   POST /v1/messages -> 200 (0.99s)
 ```
 
-Note: live cooldown state is tracked in the running server process. Check server logs for real-time per-token status.
-
-## Team setup
-
-### Server side
-
-1. Install and configure the proxy on a shared host (or each developer's machine).
-2. Add each team member's Bearer token:
-
-```bash
-anthropool-proxy add alice
-anthropool-proxy add bob
-anthropool-proxy add carol
-```
-
-3. Start the proxy:
-
-```bash
-anthropool-proxy serve
-```
-
-### Client side
-
-Each team member sets `ANTHROPIC_BASE_URL` in their Claude Code config:
-
-```bash
-# In ~/.claude/settings.json or via environment:
-export ANTHROPIC_BASE_URL=http://proxy-host:8080
-```
-
-Or add to `~/.claude/settings.json`:
+**Change the listen address or cooldown duration** by editing `~/.config/anthropool-proxy/config.json`:
 
 ```json
 {
-  "env": {
-    "ANTHROPIC_BASE_URL": "http://proxy-host:8080"
-  }
+  "listen": "0.0.0.0:9000",
+  "cooldown_minutes": 60
 }
 ```
 
-Claude Code will now route all API calls through the proxy, which distributes them across the token pool.
+Then restart the proxy.
 
-## Getting Bearer tokens
+---
 
-Bearer tokens are stored in `~/.claude/.credentials.json` after logging in to Claude Code. The relevant field is `claudeAiOauth.accessToken`. Each team member runs Claude Code on their own machine, authenticates, and shares their access token with whoever manages the proxy config.
+### Keep the proxy running
 
-Example extraction:
+**macOS — launchd**
 
-```bash
-cat ~/.claude/.credentials.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['claudeAiOauth']['accessToken'])"
-```
-
-> **Note:** Access tokens expire and rotate. You may need to update the pool periodically when tokens expire (typically after a session or 24 hours). Watch the server logs for `401` responses as a signal that a token needs refreshing.
-
-## Logging
-
-Each request is logged to stdout:
-
-```
-[2024-01-15T10:23:45Z] token="alice" POST /v1/messages -> 200 (1.234s)
-[2024-01-15T10:23:50Z] token="alice" rate-limited, marking cooldown
-[2024-01-15T10:23:50Z] token="bob" POST /v1/messages -> 200 (0.987s)
-```
-
-## Running as a service
-
-### systemd (Linux)
-
-```ini
-[Unit]
-Description=anthropool-proxy
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/anthropool-proxy serve
-Restart=always
-User=anthropool
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### launchd (macOS)
+Create `~/Library/LaunchAgents/com.anthropool.proxy.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
@@ -197,32 +166,206 @@ WantedBy=multi-user.target
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/anthropool-proxy.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/anthropool-proxy.log</string>
 </dict>
 </plist>
 ```
 
-Save to `~/Library/LaunchAgents/com.anthropool.proxy.plist` and load with:
-
 ```bash
 launchctl load ~/Library/LaunchAgents/com.anthropool.proxy.plist
+launchctl start com.anthropool.proxy
 ```
 
-## Architecture
+**Linux — systemd**
+
+Create `/etc/systemd/system/anthropool-proxy.service`:
+
+```ini
+[Unit]
+Description=anthropool-proxy
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/anthropool-proxy serve
+Restart=always
+User=YOUR_USER
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now anthropool-proxy
+sudo journalctl -fu anthropool-proxy   # follow logs
+```
+
+---
+
+### Maintain the token pool
+
+**Remove a token** (e.g. when someone leaves the team):
+
+```bash
+anthropool-proxy remove alice
+# or by ID:
+anthropool-proxy remove a1b2c3d4e5f6a7b8
+```
+
+**Update a token** (when a token expires — you will see `401` in the logs for that label):
+
+```bash
+anthropool-proxy remove alice
+anthropool-proxy add alice   # paste the fresh token
+```
+
+Then restart the proxy (or send `SIGHUP` if you add graceful-reload support later).
+
+---
+
+## Team member guide
+
+You have two things to do:
+
+1. **Extract your Bearer token** and send it securely to your admin.
+2. **Point Claude Code at the proxy** on your machine.
+
+---
+
+### Find your bearer token
+
+Run **one** of the following on your machine and send the output to your admin via a secure channel.
+
+**macOS — Keychain (try this first):**
+```bash
+security find-generic-password -a "claude.ai" -s "claude.ai" -w 2>/dev/null \
+  || security find-internet-password -s "claude.ai" -w 2>/dev/null \
+  || security find-generic-password -s "Claude" -w
+```
+
+**macOS / Linux — credentials file:**
+```bash
+cat ~/.claude/.credentials.json \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['claudeAiOauth']['accessToken'])"
+```
+
+**Windows — credentials file:**
+```powershell
+(Get-Content "$env:APPDATA\Claude\.credentials.json" | ConvertFrom-Json).claudeAiOauth.accessToken
+```
+
+If none of those work, grab it from a network request:
+1. Open [claude.ai](https://claude.ai) in Chrome.
+2. DevTools → **Network** tab → send any message.
+3. Click any `/api/` request → **Headers** → copy the value after `Authorization: Bearer `.
+
+> Tokens expire periodically. If the admin tells you your token is returning 401 errors, just re-run the command above and send the new value.
+
+---
+
+### Configure Claude Code CLI
+
+Ask your admin for the proxy address (e.g. `http://192.168.1.50:8080`).
+
+**Option A — environment variable (temporary, per-shell)**
+
+```bash
+export ANTHROPIC_BASE_URL=http://<proxy-host>:<port>
+claude   # or 'claude code', etc.
+```
+
+**Option B — persist in Claude Code settings (recommended)**
+
+Open (or create) `~/.claude/settings.json` and add:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://<proxy-host>:<port>"
+  }
+}
+```
+
+From now on every `claude` invocation will route through the proxy automatically, with no environment variable needed.
+
+---
+
+### Configure Claude Code in VS Code
+
+The Claude Code VS Code extension reads the same `~/.claude/settings.json` as the CLI, so **Option B above also covers VS Code** — no additional steps needed after editing that file.
+
+If you prefer to set it only for VS Code:
+
+1. Open VS Code → **Settings** (`Cmd+,` / `Ctrl+,`).
+2. Search for `claude`.
+3. Find **Claude: Env** (or **Claude › Api: Base Url** depending on extension version).
+4. Set `ANTHROPIC_BASE_URL` to `http://<proxy-host>:<port>`.
+
+Or add it directly to your VS Code `settings.json`:
+
+```json
+{
+  "claude.env": {
+    "ANTHROPIC_BASE_URL": "http://<proxy-host>:<port>"
+  }
+}
+```
+
+---
+
+### Verify it is working
+
+**CLI:**
+```bash
+claude -p "say hello"
+```
+
+You should get a normal response. The admin can confirm your requests are appearing in the proxy logs.
+
+**VS Code:**
+Open the Claude Code panel and send any message. If it responds, the proxy is working.
+
+---
+
+### Revert to direct access
+
+Remove or comment out the `ANTHROPIC_BASE_URL` line from `~/.claude/settings.json` (and VS Code settings if set separately). Claude Code will revert to connecting directly to `api.anthropic.com` with your own credentials.
+
+---
+
+## Reference
+
+### CLI commands
+
+| Command | Description |
+|---|---|
+| `anthropool-proxy serve` | Start the proxy server |
+| `anthropool-proxy add <label>` | Add a token to the pool (prompts for the token value) |
+| `anthropool-proxy list` | List all tokens and their current status |
+| `anthropool-proxy remove <label\|id>` | Remove a token from the pool |
+| `anthropool-proxy status` | Show pool summary (token count, listen address, cooldown setting) |
+
+### Config file
+
+Location: `~/.config/anthropool-proxy/config.json` (respects `$XDG_CONFIG_HOME`).
+
+| Field | Default | Description |
+|---|---|---|
+| `listen` | `"0.0.0.0:8080"` | Address and port to listen on |
+| `cooldown_minutes` | `30` | How long a rate-limited token is skipped before being retried |
+| `tokens` | `[]` | Array of `{id, label, bearer_token}` — managed by CLI commands |
+
+### Log format
 
 ```
-team member CLI
-      │
-      │ ANTHROPIC_BASE_URL=http://proxy:8080
-      ▼
-anthropool-proxy (Go reverse proxy)
-      │
-      │ picks next token from pool
-      │ injects Authorization: Bearer <token>
-      │
-      ▼ on 429: mark cooldown, retry with next token
-api.anthropic.com
+[<timestamp>] token="<label>" <METHOD> <path> -> <status> (<latency>)
+[<timestamp>] token="<label>" rate-limited, entering <N>m cooldown
+[<timestamp>] token="<label>" all tokens exhausted, returning 429 to client
 ```
 
-- **No external dependencies** — stdlib only (`net/http/httputil`, `encoding/json`, etc.)
-- **Atomic config writes** — tmp file + rename + flock for safe concurrent updates
-- **Thread-safe pool** — sync.Mutex + atomic counters; safe for concurrent requests
+Watch for:
+- **`401`** — that token has expired; remove and re-add it with a fresh value.
+- **`all tokens exhausted`** — every token is in cooldown simultaneously; increase the pool size or reduce `cooldown_minutes`.
