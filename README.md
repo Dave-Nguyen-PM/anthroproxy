@@ -1,16 +1,31 @@
-# anthroproxy
-
-A Go reverse proxy that pools your team's Claude Pro/Max OAuth tokens. Heavy users draw from the whole pool instead of blocking on their own seat — rate limits are handled transparently with automatic token rotation.
-
 ```
-team member (Claude Code CLI / VS Code)
-        │  ANTHROPIC_BASE_URL=http://proxy:8080
-        ▼
-  anthroproxy
-        │  picks next available token (round-robin)
-        │  on 429 → cooldown + retry with next token
-        ▼
-  api.anthropic.com
+ █████╗  ███╗   ██╗ ████████╗ ██╗  ██╗ ██████╗   ██████╗  ██████╗  ██████╗   ██████╗  ██╗  ██╗ ██╗   ██╗
+██╔══██╗ ████╗  ██║ ╚══██╔══╝ ██║  ██║ ██╔══██╗ ██╔═══██╗ ██╔══██╗ ██╔══██╗ ██╔═══██╗ ╚██╗██╔╝ ╚██╗ ██╔╝
+███████║ ██╔██╗ ██║    ██║    ███████║ ██████╔╝ ██║   ██║ ██████╔╝ ██████╔╝ ██║   ██║  ╚███╔╝   ╚████╔╝ 
+██╔══██║ ██║╚██╗██║    ██║    ██╔══██║ ██╔══██╗ ██║   ██║ ██╔═══╝  ██╔══██╗ ██║   ██║  ██╔██╗    ╚██╔╝  
+██║  ██║ ██║ ╚████║    ██║    ██║  ██║ ██║  ██║ ╚██████╔╝ ██║      ██║  ██║ ╚██████╔╝ ██╔╝ ██╗    ██║   
+╚═╝  ╚═╝ ╚═╝  ╚═══╝    ╚═╝    ╚═╝  ╚═╝ ╚═╝  ╚═╝  ╚═════╝  ╚═╝      ╚═╝  ╚═╝  ╚═════╝  ╚═╝  ╚═╝    ╚═╝
+```
+
+<p align="center">
+  Team proxy that pools Claude Pro/Max seats — auto-rotates on rate limits.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Dave-Nguyen-PM/anthroproxy/releases/latest">
+    <img alt="latest release"
+         src="https://img.shields.io/github/v/release/Dave-Nguyen-PM/anthroproxy?style=for-the-badge&label=Release&color=c8763a&labelColor=0e1116&logo=github&logoColor=f0ead6">
+  </a>
+</p>
+
+---
+
+**`anthroproxy`** is a Go reverse proxy that pools your team's Claude Pro/Max OAuth tokens. Heavy users draw from the whole pool instead of blocking on their own seat — rate limits are handled transparently with automatic token rotation. No logout, no reconfiguration, no lost work.
+
+```text
+$ anthroproxy serve
+anthroproxy: rate limit on alice@example.com → rotated to bob@example.com, retrying…
+[2026-05-20T09:00:05Z] token="bob" POST /v1/messages -> 200 (0.99s)
 ```
 
 ---
