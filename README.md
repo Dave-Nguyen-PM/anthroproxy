@@ -30,10 +30,55 @@ anthroproxy: rate limit on alice@example.com → rotated to bob@example.com, ret
 
 ---
 
+## Install
+
+Three options — all produce the same `anthroproxy` binary.
+
+### Option 1 — pre-built binary (recommended)
+
+Download the binary for your platform from the [releases page](https://github.com/Dave-Nguyen-PM/anthroproxy/releases/latest):
+
+| Platform | File |
+|---|---|
+| macOS (Apple Silicon) | `anthroproxy-darwin-arm64` |
+| macOS (Intel) | `anthroproxy-darwin-amd64` |
+| Linux (amd64) | `anthroproxy-linux-amd64` |
+| Linux (arm64) | `anthroproxy-linux-arm64` |
+| Windows (amd64) | `anthroproxy-windows-amd64.exe` |
+
+**macOS / Linux:**
+```bash
+# Replace <version> and <platform> as appropriate
+curl -L https://github.com/Dave-Nguyen-PM/anthroproxy/releases/latest/download/anthroproxy-darwin-arm64 -o anthroproxy
+chmod +x anthroproxy
+sudo mv anthroproxy /usr/local/bin/
+```
+
+**Windows:** download the `.exe`, rename to `anthroproxy.exe`, and move it to any directory on your `Path`.
+
+### Option 2 — go install
+
+Requires Go 1.21+.
+
+```bash
+go install github.com/Dave-Nguyen-PM/anthroproxy/cmd/anthroproxy@latest
+```
+
+### Option 3 — build from source
+
+```bash
+git clone https://github.com/Dave-Nguyen-PM/anthroproxy
+cd anthroproxy
+go build -o anthroproxy ./cmd/anthroproxy
+sudo mv anthroproxy /usr/local/bin/
+```
+
+---
+
 ## Contents
 
+- [Install](#install)
 - [Admin guide](#admin-guide)
-  - [Build and install](#build-and-install)
   - [Collect tokens from team members](#collect-tokens-from-team-members)
   - [Configure and start the proxy](#configure-and-start-the-proxy)
   - [Keep the proxy running](#keep-the-proxy-running)
